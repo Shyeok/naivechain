@@ -10,18 +10,29 @@ var initialPeers = process.env.PEERS ? process.env.PEERS.split(',') : [];
 
 class Block {
 
-    constructor(index, previousHash, timestamp, data, hash, nonce, targetvalue) {
+    constructor(index, previousHash, timestamp, data, hash, targetvalue) {
 
         this.index = index;
         this.previousHash = previousHash.toString();
         this.timestamp = timestamp;
         this.data = data;
         this.hash = hash.toString();
-        this.nonce = nonce;
+        this.nonce = 0;
         this.targetvalue = targetvalue;
-        this.tx_set = [];
-        this.merkletree = [];
         this.root = "";
+
+        this.tx_set = [];
+    }
+}
+
+class Merktle_Tree {
+
+    constructor (){
+
+        this.index = 0;
+        this.node_values = [];
+        this.root = "";
+
     }
 }
 
@@ -39,6 +50,8 @@ var MessageType = {
 
 var blockchain = [];
 
+var mk_db = []; // 머클 트리 노드 값 저장
+
 var initHttpServer = () => { // 통신 부분 중요함. 데이터는 json 형식에 의존함.
     var app = express(); // Http 통신
     app.use(bodyParser.json());
@@ -53,7 +66,7 @@ var initHttpServer = () => { // 통신 부분 중요함. 데이터는 json 형�
         else{
             var currentTimestamp = new Date().getTime() / 1000;
             
-            var new_block = new Block(a, "0", 0, req.body.data, "", 0, "0AAA");
+            var new_block = new Block(a, "0", 0, req.body.data, "", "0AAA");
 
             var blockHash = calculateHashForBlock(new_block);
 
@@ -65,9 +78,6 @@ var initHttpServer = () => { // 통신 부분 중요함. 데이터는 json 형�
     }); 
 
     app.post('/mineBlock', (req, res) => { // mining block
-
-        /*memory_pool = [{"sender" : "a","reciver" : "b","amount" : 100}];   // temporarily set memory pool
-        memory_pool.push({"sender" : "b","reciver" : "c","amount" : 150});*/
 
         var newBlock = generateNextBlock(req.body.data, memory_pool); // Using req.body.data for labeling block
 
@@ -145,26 +155,24 @@ var generateNextBlock = (blockData, m_pool) => {
     
     var nextHash = calculateHash(nextIndex, previousBlock.hash, nextTimestamp, blockData);
 
-    var new_block = new Block(nextIndex, previousBlock.hash, nextTimestamp, blockData, nextHash, 0, "0AAA");
+    var new_block = new Block(nextIndex, previousBlock.hash, nextTimestamp, blockData, nextHash, "0AAA");
 
-    var transaction_num = 0;
+    var tx_n = 0; // The number of insert transaction
 
-    var block_transactions = [];
+    var block_txs = []; // Insert transaction list
 
-    while(transaction_num <= 2 && m_pool.length != 0) { // assume block size is 3 transaction
+    while(tx_n <= 2 && m_pool.length != 0) { // assume block size is 3 transaction
 
-        transaction_num += 1;
-
-        var new_transaction = m_pool.shift();
-
-        block_transactions.push(new_transaction);
+        tx_n += 1;
+        var new_tx = m_pool.shift();
+        block_txs.push(new_tx);
 
     }
 
 
-    new_block.tx_set = block_transactions;
+    new_block.tx_set = block_txs;
 
-    makemerkletree(new_block, block_transactions);
+    makemerkletree(new_block, block_txs);
 
     ProofofWork(new_block);
     
@@ -177,52 +185,59 @@ var generateNextBlock = (blockData, m_pool) => {
 var makemerkletree = (block, block_Transactions) => { // make merkle tree node's value
 
     var index_s = 0;
-
     var index_e = 0;
+    var mk_vals = new Merktle_Tree();
+
+    mk_vals.index = block.index;
 
     for( var i in block_Transactions){
 
-        var hash_value = CryptoJS.SHA256(block_Transactions[i]).toString();
-        block.merkletree.push(hash_value);
+        var tx_st = JSON.stringify(block_Transactions[i]);
+        var h_val = CryptoJS.SHA256(tx_st).toString();
+        mk_vals.node_values.push(h_val);
+
     }
     
     index_s = 0;
-    index_e = block_Transactions.length;
+    index_e = mk_vals.node_values.length;
 
     while(index_s + 1 != index_e){
 
         for( var i = index_s; i < index_e; i=i+2){
             if(i + 1 < index_e){
-                var hash_value = CryptoJS.SHA256(block.merkletree[i] + block.merkletree[i + 1]).toString();
-                block.merkletree.push(hash_value);
+
+                var h_val = CryptoJS.SHA256(mk_vals.node_values[i] + mk_vals.node_values[i+1]).toString();
+                mk_vals.node_values.push(h_val);
+
             }
             else{
-                var hash_value = CryptoJS.SHA256(block.merkletree[i]).toString();
-                block.merkletree.push(hash_value);
+
+                var h_val = CryptoJS.SHA256(mk_vals.node_values[i]).toString();
+                mk_vals.node_values.push(h_val);
+
             }
         }
 
-      //  console.log(index_s);
-      //  console.log(index_e);
-
         index_s = index_e;
-        index_e = block.merkletree.length;
+        index_e = mk_vals.node_values.length;
 
     }
 
-    block.root = block.merkletree[index_s];
+    block.root =  mk_vals.node_values[index_s];
+
+    console.log(mk_vals.node_values);
 }
 
 var ProofofWork = (block) => { // Proof of Work 완료
 
-    var hashvalue;
+    var h_val;
     while(1){
 
-        hashvalue = CryptoJS.SHA256(block.root + (block.index).toString() + block.data + (block.nonce).toString()).toString();
+        h_val = CryptoJS.SHA256(block.root + (block.index).toString() + block.data + (block.nonce).toString()).toString();
 
-        var value_1 = hashvalue.substring(0,3);
-
-        if(value_1 < block.targetvalue) break;
+        var res_val = h_val.substring(0,3);
+        
+        if(res_val < block.targetvalue) break;
 
         block.nonce += 1;
 
