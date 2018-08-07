@@ -322,7 +322,7 @@ var replaceChain = (newBlocks) => { // Block reorganization, transaction verific
 };
 
 var isValidChain = (blockchainToValidate) => { // Optimazation
-    if (JSON.stringify(blockchainToValidate[0]) !== JSON.stringify(getGenesisBlock())) {
+    if (JSON.stringify(blockchainToValidate[0]) !== JSON.stringify(blockchain[0])) {
         return false;
     }
     var tempBlocks = [blockchainToValidate[0]];
